@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "465291344573",
+    "project_id": "sidia-715d2",
+    "storage_bucket": "sidia-715d2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:465291344573:android:f9fb30f9909289684f95d4",
+        "android_client_info": {
+          "package_name": "com.example.sidia_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFq_Mj7Zxb0d4oXqMfswttc-7E_0tU3cI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

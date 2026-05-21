@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
-import 'otp_verification_screen.dart';
+import 'register_screen.dart';
+import 'main_navigation.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,81 +14,163 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  void _sendOtp() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) {
+  Future<void> _loginWithEmail() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nomor WhatsApp tidak boleh kosong')),
+        const SnackBar(content: Text('Email dan password wajib diisi')),
       );
       return;
     }
 
     setState(() => _isLoading = true);
-    
-    // Format the number (assuming Indonesian numbers)
-    String formattedPhone = phone;
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '+62\${formattedPhone.substring(1)}';
-    } else if (!formattedPhone.startsWith('+')) {
-      formattedPhone = '+62\$formattedPhone';
+
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = userCredential.user;
+
+      if (user != null) {
+        if (!user.emailVerified) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tolong verifikasi email Anda terlebih dahulu. Cek kotak masuk Anda.')),
+          );
+          // Optional: Resend verification email
+          // await user.sendEmailVerification();
+          return;
+        }
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _isLoading = false);
+      String errorMessage = 'Gagal masuk.';
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        errorMessage = 'Email atau password salah.';
+      } else if (e.code == 'wrong-password') {
+        errorMessage = 'Password salah.';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'Format email tidak valid.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Terjadi kesalahan: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loginWithGoogle() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() => _isGoogleLoading = false);
+        return; // User canceled the sign-in
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null) {
+        // Cek apakah pengguna baru (jika baru, inisialisasi profil di Firestore)
+        final userDoc = await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).get();
+        if (!userDoc.exists) {
+          await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).set({
+            'id_user': user.uid,
+            'nama_lengkap': user.displayName ?? 'Pengguna Google',
+            'email': user.email,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          await FirebaseFirestore.instance.collection('RekamMedis').doc(user.uid).set({
+            'id_user': user.uid,
+            'usia': 0,
+            'berat_badan': 0.0,
+            'tinggi_badan': 0.0,
+            'riwayat_keluarga': '',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainNavigation()),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isGoogleLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal login dengan Google: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan email Anda terlebih dahulu untuk mereset password')),
+      );
+      return;
     }
 
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: formattedPhone,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-resolution (rare on web/some devices, but good to handle)
-          // We let the OTP screen handle actual sign in for consistent flow
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gagal mengirim OTP: \${e.message}')),
-          );
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          setState(() => _isLoading = false);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OtpVerificationScreen(
-                verificationId: verificationId,
-                phoneNumber: formattedPhone,
-              ),
-            ),
-          );
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          // Handled silently
-        },
-      );
-    } catch (e) {
-      setState(() => _isLoading = false);
-      // Fallback for UI testing if Firebase is not configured
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Firebase belum dikonfigurasi. Lanjut ke layar OTP untuk UI Preview.')),
-      );
-      // Dummy navigation for UI preview
-      Future.delayed(const Duration(seconds: 1), () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => OtpVerificationScreen(
-              verificationId: 'dummy_id',
-              phoneNumber: formattedPhone,
-            ),
-          ),
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Link reset password telah dikirim ke email Anda')),
         );
-      });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengirim email reset: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -100,7 +185,6 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Back button (optional, usually login is root)
                 const SizedBox(height: 20),
                 
                 // Logo
@@ -132,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Masukkan nomor WhatsApp Anda untuk masuk atau mendaftar',
+                  'Masuk ke akun Anda untuk melanjutkan',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 14,
@@ -141,83 +225,45 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 40),
 
-                // Phone Input Field
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.bgWhite,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                // Email Input
+                _buildLabel('Email'),
+                _buildTextField(
+                  _emailController,
+                  'Misal: budi@email.com',
+                  Icons.mail_outline,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 20),
+
+                // Password Input
+                _buildLabel('Password'),
+                _buildPasswordField(_passwordController, _obscurePassword, () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                }),
+                
+                // Forgot Password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _resetPassword,
+                    child: const Text(
+                      'Lupa Password?',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        color: AppColors.primaryNavy,
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      // Country Code Prefix
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(color: AppColors.border),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text(
-                              '🇮🇩',
-                              style: TextStyle(fontSize: 18),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              '+62',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      // Input TextField
-                      Expanded(
-                        child: TextField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          style: const TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textPrimary,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '812 3456 7890',
-                            hintStyle: TextStyle(
-                              color: AppColors.textLight,
-                              fontWeight: FontWeight.w400,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
 
-                // Send OTP Button
+                // Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _sendOtp,
+                    onPressed: _isLoading || _isGoogleLoading ? null : _loginWithEmail,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryNavy,
                       shape: RoundedRectangleBorder(
@@ -232,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Text(
-                            'Kirim Kode OTP',
+                            'Masuk',
                             style: TextStyle(
                               fontFamily: 'Poppins',
                               fontSize: 16,
@@ -242,22 +288,180 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
-                
                 const SizedBox(height: 24),
-                const Center(
-                  child: Text(
-                    'Kami akan mengirimkan kode OTP via WhatsApp/SMS\nuntuk verifikasi nomor Anda.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 12,
-                      color: AppColors.textLight,
+
+                // Divider
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'ATAU',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Google Login Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton(
+                    onPressed: _isLoading || _isGoogleLoading ? null : _loginWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey.shade300),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      backgroundColor: AppColors.bgWhite,
+                    ),
+                    child: _isGoogleLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(color: AppColors.primaryNavy, strokeWidth: 2),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                'assets/images/google_logo.png',
+                                height: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Masuk dengan Google',
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
+                ),
+                const SizedBox(height: 32),
+
+                // Register Link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Belum punya akun? ',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                      ),
+                      child: const Text(
+                        'Daftar Sekarang',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryNavy,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {TextInputType? keyboardType}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
+            fontSize: 14,
+          ),
+          prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPasswordField(TextEditingController controller, bool isObscure, VoidCallback toggleObscure) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: isObscure,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Masukkan password',
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
+            fontSize: 14,
+          ),
+          prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary, size: 20),
+          suffixIcon: IconButton(
+            icon: Icon(
+              isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+            onPressed: toggleObscure,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );

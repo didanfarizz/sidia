@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
-import 'main_navigation.dart';
+import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final String phoneNumber;
-  
-  const RegisterScreen({super.key, required this.phoneNumber});
+  const RegisterScreen({super.key});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -16,22 +14,37 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _dobController = TextEditingController();
-  String _selectedGender = 'Pria';
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _dobController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  void _saveUserData() async {
-    if (_nameController.text.isEmpty || _dobController.text.isEmpty) {
+  Future<void> _registerUser() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mohon lengkapi data diri Anda')),
+        const SnackBar(content: Text('Semua kolom wajib diisi')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password dan Konfirmasi Password tidak cocok')),
       );
       return;
     }
@@ -39,35 +52,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      
-      // If user is null, it means we are in UI preview mode without actual Firebase Auth
+      // 1. Buat user di Firebase Auth
+      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = userCredential.user;
       if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'name': _nameController.text.trim(),
-          'gender': _selectedGender,
-          'dateOfBirth': _dobController.text.trim(),
-          'email': _emailController.text.trim(),
-          'phoneNumber': widget.phoneNumber,
+        // 2. Kirim Email Verifikasi
+        await user.sendEmailVerification();
+
+        // 3. Simpan data Pengguna ke Firestore
+        await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).set({
+          'id_user': user.uid,
+          'nama_lengkap': name,
+          'email': email,
           'createdAt': FieldValue.serverTimestamp(),
         });
-      } else {
-        // Mock delay for UI testing
-        await Future.delayed(const Duration(seconds: 1));
-      }
 
+        // 4. Inisialisasi RekamMedis kosong di Firestore (1-to-1)
+        await FirebaseFirestore.instance.collection('RekamMedis').doc(user.uid).set({
+          'id_user': user.uid,
+          'usia': 0,
+          'berat_badan': 0.0,
+          'tinggi_badan': 0.0,
+          'riwayat_keluarga': '',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // 5. Kembali ke halaman login
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pendaftaran berhasil! Silakan periksa email Anda untuk verifikasi.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _isLoading = false);
+      String errorMessage = 'Terjadi kesalahan saat mendaftar.';
+      if (e.code == 'weak-password') {
+        errorMessage = 'Password terlalu lemah.';
+      } else if (e.code == 'email-already-in-use') {
+        errorMessage = 'Email sudah terdaftar.';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'Format email tidak valid.';
+      }
+      
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const MainNavigation()),
-          (route) => false,
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
         );
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal menyimpan data: \${e.toString()}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Terjadi kesalahan: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -78,46 +129,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'Lengkapi Data Diri',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: () => Navigator.pop(context),
         ),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Halo!',
+                'Buat Akun Baru',
                 style: TextStyle(
                   fontFamily: 'Poppins',
-                  fontSize: 24,
+                  fontSize: 28,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Lengkapi profil Anda untuk pengalaman diagnosis yang lebih personal dan akurat.',
+                'Daftar untuk mulai menganalisis risiko diabetes Anda.',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 14,
                   color: AppColors.textSecondary,
-                  height: 1.5,
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Form
+              // Form Container
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -139,37 +182,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _buildTextField(_nameController, 'Misal: Budi Santoso', Icons.person_outline),
                     const SizedBox(height: 20),
 
-                    _buildLabel('Jenis Kelamin'),
-                    _buildGenderDropdown(),
-                    const SizedBox(height: 20),
-
-                    _buildLabel('Tanggal Lahir'),
-                    _buildTextField(
-                      _dobController,
-                      'DD/MM/YYYY',
-                      Icons.calendar_today_outlined,
-                      keyboardType: TextInputType.datetime,
-                    ),
-                    const SizedBox(height: 20),
-
-                    _buildLabel('Email (Opsional)'),
+                    _buildLabel('Email'),
                     _buildTextField(
                       _emailController,
-                      'Misal: budi@email.com',
+                      'budi@email.com',
                       Icons.mail_outline,
                       keyboardType: TextInputType.emailAddress,
                     ),
+                    const SizedBox(height: 20),
+
+                    _buildLabel('Password'),
+                    _buildPasswordField(_passwordController, _obscurePassword, () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    }),
+                    const SizedBox(height: 20),
+
+                    _buildLabel('Konfirmasi Password'),
+                    _buildPasswordField(_confirmPasswordController, _obscureConfirmPassword, () {
+                      setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                    }),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Save Button
+              // Register Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveUserData,
+                  onPressed: _isLoading ? null : _registerUser,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryNavy,
                     shape: RoundedRectangleBorder(
@@ -184,7 +226,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
                       : const Text(
-                          'Simpan & Lanjutkan',
+                          'Daftar',
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 16,
@@ -194,6 +236,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // Login Link
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Sudah punya akun? ',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    ),
+                    child: const Text(
+                      'Masuk',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -244,37 +316,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildGenderDropdown() {
+  Widget _buildPasswordField(TextEditingController controller, bool isObscure, VoidCallback toggleObscure) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgGrey,
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedGender,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.textSecondary),
-          style: const TextStyle(
-            fontFamily: 'Poppins',
+      child: TextField(
+        controller: controller,
+        obscureText: isObscure,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Masukkan password',
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
             fontSize: 14,
-            color: AppColors.textPrimary,
           ),
-          onChanged: (String? newValue) {
-            if (newValue != null) {
-              setState(() {
-                _selectedGender = newValue;
-              });
-            }
-          },
-          items: <String>['Pria', 'Wanita']
-              .map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
-          }).toList(),
+          prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary, size: 20),
+          suffixIcon: IconButton(
+            icon: Icon(
+              isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+            onPressed: toggleObscure,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );

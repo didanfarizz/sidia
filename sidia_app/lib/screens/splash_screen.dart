@@ -45,11 +45,15 @@ class _SplashScreenState extends State<SplashScreen>
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
+        if (user != null && user.emailVerified) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const MainNavigation()),
           );
         } else {
+          // Jika belum verifikasi email, sign out untuk keamanan
+          if (user != null && !user.emailVerified) {
+            FirebaseAuth.instance.signOut();
+          }
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
           );
@@ -91,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen>
                     children: [
                       // Logo SIDIA
                       Image.asset(
-                        'assets/images/logo_sidia2.png',
+                        'assets/images/logo_sidia.png',
                         width: 256,
                         height: 256,
                         fit: BoxFit.contain,
