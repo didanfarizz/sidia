@@ -46,12 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Insights & Education Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildInsightsCard(),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
             ],
           ),
         ),

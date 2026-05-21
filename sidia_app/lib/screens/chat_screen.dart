@@ -11,6 +11,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  bool _hasStarted = false;
 
   @override
   void dispose() {
@@ -29,52 +30,56 @@ class _ChatScreenState extends State<ChatScreen> {
             // Top Bar
             _buildTopBar(),
 
-            // Messages
-            Expanded(
-              child: ListView(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                children: [
-                  // Date separator
-                  _buildDateSeparator('Today, 9:41 AM'),
-                  const SizedBox(height: 16),
+            if (!_hasStarted)
+              Expanded(child: _buildIntroScreen())
+            else ...[
+              // Messages
+              Expanded(
+                child: ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  children: [
+                    // Date separator
+                    _buildDateSeparator('Today, 9:41 AM'),
+                    const SizedBox(height: 16),
 
-                  // AI Message 1
-                  _buildAIMessage(
-                    _buildRichText1(),
-                  ),
-                  const SizedBox(height: 12),
+                    // AI Message 1
+                    _buildAIMessage(
+                      _buildRichText1(),
+                    ),
+                    const SizedBox(height: 12),
 
-                  // User Message 1
-                  _buildUserMessage(
-                    'I feel okay, maybe a little more tired than usual. I did have a larger pasta dinner last night around 8 PM. Could that be it?',
-                    '9:45 AM',
-                  ),
-                  const SizedBox(height: 12),
+                    // User Message 1
+                    _buildUserMessage(
+                      'I feel okay, maybe a little more tired than usual. I did have a larger pasta dinner last night around 8 PM. Could that be it?',
+                      '9:45 AM',
+                    ),
+                    const SizedBox(height: 12),
 
-                  // AI Message 2
-                  _buildAIMessage(
-                    _buildRichText2(),
-                  ),
-                  const SizedBox(height: 4),
+                    // AI Message 2
+                    _buildAIMessage(
+                      _buildRichText2(),
+                    ),
+                    const SizedBox(height: 4),
 
-                  // Diagnostic Analysis Card (embedded in chat)
-                  _buildDiagnosticCard(),
-                  const SizedBox(height: 4),
+                    // Diagnostic Analysis Card (embedded in chat)
+                    _buildDiagnosticCard(),
+                    const SizedBox(height: 4),
 
-                  // Recommendation Box
-                  _buildRecommendationBox(),
-                  const SizedBox(height: 16),
+                    // Recommendation Box
+                    _buildRecommendationBox(),
+                    const SizedBox(height: 16),
 
-                  // Typing indicator
-                  _buildTypingIndicator(),
-                  const SizedBox(height: 8),
-                ],
+                    // Typing indicator
+                    _buildTypingIndicator(),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
-            ),
 
-            // Input Area
-            _buildInputArea(),
+              // Input Area
+              _buildInputArea(),
+            ],
           ],
         ),
       ),
@@ -135,6 +140,130 @@ class _ChatScreenState extends State<ChatScreen> {
               color: AppColors.textSecondary,
               size: 20,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Intro Screen (Empty State) ────────────────────────
+  Widget _buildIntroScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                decoration: BoxDecoration(
+                  color: AppColors.bgWhite,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Robot Avatar
+                    Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.accentBlue,
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.smart_toy,
+                          color: Colors.white,
+                          size: 45,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Heading
+                    const Text(
+                      'Halo!',
+                      style: TextStyle(
+                        fontFamily: 'Georgia', // Using a serif-like font similar to design
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Subtitle
+                    const Text(
+                      'Saya Asisten SIDIA Anda. Mari kita mulai proses penilaian risiko diabetes Anda untuk mendapatkan panduan medis yang tepat.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        height: 1.6,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Bottom Button Area
+          Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _hasStarted = true;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E40AF), // Deeper blue matching design
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Text(
+                        'Mulai Diagnosis',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'SIDIA can make mistakes. Always consult your primary care physician for final medical decisions.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 11,
+                  color: AppColors.textLight,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
         ],
       ),

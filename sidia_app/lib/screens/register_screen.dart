@@ -1,307 +1,200 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import 'main_navigation.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String phoneNumber;
+  
+  const RegisterScreen({super.key, required this.phoneNumber});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen>
-    with SingleTickerProviderStateMixin {
+class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController(text: 'pasien.baru@gmail.com');
-  String _selectedGender = '';
-  DateTime? _birthDate;
-
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOut,
-    ));
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOut,
-      ),
-    );
-    _animController.forward();
-  }
+  final _emailController = TextEditingController();
+  final _dobController = TextEditingController();
+  String _selectedGender = 'Pria';
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _animController.dispose();
+    _dobController.dispose();
     super.dispose();
+  }
+
+  void _saveUserData() async {
+    if (_nameController.text.isEmpty || _dobController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mohon lengkapi data diri Anda')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      
+      // If user is null, it means we are in UI preview mode without actual Firebase Auth
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'name': _nameController.text.trim(),
+          'gender': _selectedGender,
+          'dateOfBirth': _dobController.text.trim(),
+          'email': _emailController.text.trim(),
+          'phoneNumber': widget.phoneNumber,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Mock delay for UI testing
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan data: \${e.toString()}')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgLoginScreen,
-      body: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 16),
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.bgWhite,
-                borderRadius: BorderRadius.circular(32),
+      backgroundColor: AppColors.bgLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Lengkapi Data Diri',
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Halo!',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
               ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              const SizedBox(height: 8),
+              const Text(
+                'Lengkapi profil Anda untuk pengalaman diagnosis yang lebih personal dan akurat.',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Form
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.bgWhite,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header Title (centered)
-                    Center(
-                      child: Text(
-                        'Pengisian Data Diri',
-                        style: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Subtitle (centered)
-                    Center(
-                      child: Text(
-                        'Silakan lengkapi profil Anda untuk\nmelanjutkan penggunaan GlucoGuide\nAI.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.textSecondary,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Logo Banner
-                    Container(
-                      width: double.infinity,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: AppColors.bgGrey,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Center(
-                        child: Image.asset(
-                          'assets/images/logo_sidia.png',
-                          width: 160,
-                          height: 64,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildSmallLogo();
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-
-                    // Email Field
-                    _buildLabel('Email'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _emailController,
-                      readOnly: true,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(
-                          Icons.email_outlined,
-                          color: AppColors.textLight,
-                          size: 20,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.bgGrey,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                      ),
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Nama Lengkap
                     _buildLabel('Nama Lengkap'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        hintText: 'Masukkan nama lengkap Anda',
-                        hintStyle: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 14,
-                          color: AppColors.textLight,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: AppColors.primaryNavy,
-                            width: 2,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.bgWhite,
-                      ),
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
+                    _buildTextField(_nameController, 'Misal: Budi Santoso', Icons.person_outline),
                     const SizedBox(height: 20),
 
-                    // Jenis Kelamin
                     _buildLabel('Jenis Kelamin'),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildGenderOption('Pria'),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildGenderOption('Wanita'),
-                        ),
-                      ],
+                    _buildGenderDropdown(),
+                    const SizedBox(height: 20),
+
+                    _buildLabel('Tanggal Lahir'),
+                    _buildTextField(
+                      _dobController,
+                      'DD/MM/YYYY',
+                      Icons.calendar_today_outlined,
+                      keyboardType: TextInputType.datetime,
                     ),
                     const SizedBox(height: 20),
 
-                    // Tanggal Lahir
-                    _buildLabel('Tanggal Lahir'),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: _pickDate,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
-                          color: AppColors.bgWhite,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.calendar_today_outlined,
-                              color: AppColors.textLight,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              _birthDate != null
-                                  ? '${_birthDate!.month.toString().padLeft(2, '0')}/${_birthDate!.day.toString().padLeft(2, '0')}/${_birthDate!.year}'
-                                  : 'mm/dd/yyyy',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 14,
-                                color: _birthDate != null
-                                    ? AppColors.textPrimary
-                                    : AppColors.textLight,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    _buildLabel('Email (Opsional)'),
+                    _buildTextField(
+                      _emailController,
+                      'Misal: budi@email.com',
+                      Icons.mail_outline,
+                      keyboardType: TextInputType.emailAddress,
                     ),
-                    const SizedBox(height: 32),
-
-                    // Simpan Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => const MainNavigation(),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryNavy,
-                          foregroundColor: AppColors.textWhite,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Text(
-                              'Simpan',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(Icons.arrow_forward, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                   ],
                 ),
               ),
-            ),
+              const SizedBox(height: 32),
+
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _saveUserData,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryNavy,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Simpan & Lanjutkan',
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -309,133 +202,81 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontFamily: 'Poppins',
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
-      ),
-    );
-  }
-
-  Widget _buildGenderOption(String label) {
-    final isSelected = _selectedGender == label;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedGender = label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppColors.primaryNavy : AppColors.border,
-            width: isSelected ? 2 : 1,
-          ),
-          color: isSelected
-              ? AppColors.primaryNavy.withValues(alpha: 0.05)
-              : AppColors.bgWhite,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Radio circle
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? AppColors.primaryNavy : AppColors.textLight,
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryNavy,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected
-                    ? AppColors.primaryNavy
-                    : AppColors.textSecondary,
-              ),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
         ),
       ),
     );
   }
 
-  Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime(2000),
-      firstDate: DateTime(1920),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.primaryNavy,
-            ),
+  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {TextInputType? keyboardType}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
+            fontSize: 14,
           ),
-          child: child!,
-        );
-      },
+          prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
     );
-    if (date != null) {
-      setState(() => _birthDate = date);
-    }
   }
 
-  Widget _buildSmallLogo() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'SI',
-          style: TextStyle(
+  Widget _buildGenderDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedGender,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.textSecondary),
+          style: const TextStyle(
             fontFamily: 'Poppins',
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryNavy,
+            fontSize: 14,
+            color: AppColors.textPrimary,
           ),
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              setState(() {
+                _selectedGender = newValue;
+              });
+            }
+          },
+          items: <String>['Pria', 'Wanita']
+              .map<DropdownMenuItem<String>>((String value) {
+            return DropdownMenuItem<String>(
+              value: value,
+              child: Text(value),
+            );
+          }).toList(),
         ),
-        Text(
-          'D',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryRed,
-          ),
-        ),
-        Text(
-          'IA',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryNavy,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

@@ -3,7 +3,6 @@ import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'assessment_screen.dart';
 import 'chat_screen.dart';
-import 'health_insights_screen.dart';
 import 'profile_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -20,7 +19,6 @@ class _MainNavigationState extends State<MainNavigation> {
     const HomeScreen(),
     const AssessmentScreen(),
     const ChatScreen(),
-    const HealthInsightsScreen(),
     const ProfileScreen(),
   ];
 
@@ -48,11 +46,10 @@ class _MainNavigationState extends State<MainNavigation> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Beranda'),
-                _buildNavItem(1, Icons.history_outlined, Icons.history, 'Riwayat'),
-                _buildNavItem(2, Icons.medical_services_outlined, Icons.medical_services, 'Diagnosis'),
-                _buildNavItem(3, Icons.insights_outlined, Icons.insights, 'Insights'),
-                _buildNavItem(4, Icons.person_outline, Icons.person, 'Profil'),
+                _buildNavItem(0, Icons.home_rounded),
+                _buildNavItem(1, Icons.history),
+                _buildNavItem(2, Icons.medical_services),
+                _buildNavItem(3, Icons.person),
               ],
             ),
           ),
@@ -61,41 +58,21 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
+  Widget _buildNavItem(int index, IconData icon) {
     final isActive = _currentIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _currentIndex = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 16 : 12,
-          vertical: 8,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive
-              ? AppColors.primaryNavy.withValues(alpha: 0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: isActive ? const Color(0xFFE2E8F0) : Colors.transparent, // Grey background
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isActive ? activeIcon : icon,
-              size: 24,
-              color: isActive ? AppColors.primaryNavy : AppColors.textLight,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive ? AppColors.primaryNavy : AppColors.textLight,
-              ),
-            ),
-          ],
+        child: Icon(
+          icon,
+          size: 26,
+          color: isActive ? const Color(0xFF475569) : const Color(0xFF94A3B8), // Darker grey if active
         ),
       ),
     );
