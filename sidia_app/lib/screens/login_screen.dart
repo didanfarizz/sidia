@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import 'register_screen.dart';
 import 'main_navigation.dart';
+import 'complete_profile_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -51,11 +52,36 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user != null) {
         if (!user.emailVerified) {
           setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tolong verifikasi email Anda terlebih dahulu. Cek kotak masuk Anda.')),
-          );
-          // Optional: Resend verification email
-          // await user.sendEmailVerification();
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Verifikasi Email'),
+                content: const Text('Tolong verifikasi email Anda terlebih dahulu dengan mengklik tautan yang kami kirimkan ke kotak masuk (atau folder Spam) Anda.'),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      user.sendEmailVerification().then((_) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Email verifikasi ulang telah dikirim!')),
+                        );
+                      }).catchError((e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Gagal mengirim ulang: ${e.toString()}')),
+                        );
+                      });
+                    },
+                    child: const Text('Kirim Ulang'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Tutup'),
+                  ),
+                ],
+              ),
+            );
+          }
           return;
         }
 
@@ -112,31 +138,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = userCredential.user;
 
       if (user != null) {
-        // Cek apakah pengguna baru (jika baru, inisialisasi profil di Firestore)
         final userDoc = await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).get();
         if (!userDoc.exists) {
-          await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).set({
-            'id_user': user.uid,
-            'nama_lengkap': user.displayName ?? 'Pengguna Google',
-            'email': user.email,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-          await FirebaseFirestore.instance.collection('RekamMedis').doc(user.uid).set({
-            'id_user': user.uid,
-            'usia': 0,
-            'berat_badan': 0.0,
-            'tinggi_badan': 0.0,
-            'riwayat_keluarga': '',
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
-
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainNavigation()),
-          );
+          if (mounted) {
+            setState(() => _isGoogleLoading = false);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => CompleteProfileScreen(user: user)),
+            );
+          }
+        } else {
+          if (mounted) {
+            setState(() => _isGoogleLoading = false);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const MainNavigation()),
+            );
+          }
         }
       }
     } catch (e) {

@@ -50,7 +50,6 @@ class _SplashScreenState extends State<SplashScreen>
             MaterialPageRoute(builder: (context) => const MainNavigation()),
           );
         } else {
-          // Jika belum verifikasi email, sign out untuk keamanan
           if (user != null && !user.emailVerified) {
             FirebaseAuth.instance.signOut();
           }

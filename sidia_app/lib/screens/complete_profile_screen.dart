@@ -3,41 +3,43 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
-import 'login_screen.dart';
+import 'main_navigation.dart';
 
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+class CompleteProfileScreen extends StatefulWidget {
+  final User user;
+  
+  const CompleteProfileScreen({super.key, required this.user});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  State<CompleteProfileScreen> createState() => _CompleteProfileScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
+class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
   
   String? _selectedGender;
   DateTime? _selectedDate;
-  
   bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.user.displayName ?? '');
+    _emailController = TextEditingController(text: widget.user.email ?? '');
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().subtract(const Duration(days: 365 * 20)), // Default 20 years old
+      initialDate: DateTime.now().subtract(const Duration(days: 365 * 20)),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -60,22 +62,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  Future<void> _registerUser() async {
+  Future<void> _saveProfile() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    final confirmPassword = _confirmPasswordController.text;
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty || _selectedGender == null || _selectedDate == null) {
+    if (name.isEmpty || _selectedGender == null || _selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Semua kolom wajib diisi')),
-      );
-      return;
-    }
-
-    if (password != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password dan Konfirmasi Password tidak cocok')),
       );
       return;
     }
@@ -83,73 +76,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Buat user di Firebase Auth
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Simpan data Pengguna ke Firestore
+      await FirebaseFirestore.instance.collection('Pengguna').doc(widget.user.uid).set({
+        'id_user': widget.user.uid,
+        'nama_lengkap': name,
+        'email': email,
+        'jenis_kelamin': _selectedGender,
+        'tanggal_lahir': _selectedDate!.toIso8601String(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-      final user = userCredential.user;
-      if (user != null) {
-        // 2. Kirim Email Verifikasi
-        await user.sendEmailVerification();
+      // Inisialisasi RekamMedis kosong di Firestore (1-to-1)
+      await FirebaseFirestore.instance.collection('RekamMedis').doc(widget.user.uid).set({
+        'id_user': widget.user.uid,
+        'usia': 0,
+        'berat_badan': 0.0,
+        'tinggi_badan': 0.0,
+        'riwayat_keluarga': '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-        // 3. Simpan data Pengguna ke Firestore
-        await FirebaseFirestore.instance.collection('Pengguna').doc(user.uid).set({
-          'id_user': user.uid,
-          'nama_lengkap': name,
-          'email': email,
-          'jenis_kelamin': _selectedGender,
-          'tanggal_lahir': _selectedDate!.toIso8601String(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        // 4. Inisialisasi RekamMedis kosong di Firestore (1-to-1)
-        await FirebaseFirestore.instance.collection('RekamMedis').doc(user.uid).set({
-          'id_user': user.uid,
-          'usia': 0,
-          'berat_badan': 0.0,
-          'tinggi_badan': 0.0,
-          'riwayat_keluarga': '',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
-        // 5. Kembali ke halaman login
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Pendaftaran berhasil! Silakan periksa email Anda untuk verifikasi.'),
-              duration: Duration(seconds: 5),
-            ),
-          );
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
-        }
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _isLoading = false);
-      String errorMessage = 'Terjadi kesalahan saat mendaftar.';
-      if (e.code == 'weak-password') {
-        errorMessage = 'Password terlalu lemah.';
-      } else if (e.code == 'email-already-in-use') {
-        errorMessage = 'Email sudah terdaftar.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'Format email tidak valid.';
-      }
-      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
         );
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Terjadi kesalahan: ${e.toString()}')),
+          SnackBar(content: Text('Gagal menyimpan profil: ${e.toString()}')),
         );
       }
     }
@@ -159,22 +116,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Buat Akun Baru',
+                'Lengkapi Profil',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 28,
@@ -184,7 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Daftar untuk mulai menganalisis risiko diabetes Anda.',
+                'Tolong lengkapi data diri Anda sebelum melanjutkan.',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 14,
@@ -193,7 +142,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 32),
 
-              // Form Container
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -211,17 +159,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildLabel('Nama Lengkap'),
-                    _buildTextField(_nameController, 'Misal: Budi Santoso', Icons.person_outline),
+                    _buildLabel('Email'),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.mail_outline, color: AppColors.textSecondary, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _emailController.text,
+                              style: const TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 14,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 20),
 
-                    _buildLabel('Email'),
-                    _buildTextField(
-                      _emailController,
-                      'budi@email.com',
-                      Icons.mail_outline,
-                      keyboardType: TextInputType.emailAddress,
-                    ),
+                    _buildLabel('Nama Lengkap'),
+                    _buildTextField(_nameController, 'Masukkan nama lengkap', Icons.person_outline),
                     const SizedBox(height: 20),
                     
                     _buildLabel('Jenis Kelamin'),
@@ -230,29 +195,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     
                     _buildLabel('Tanggal Lahir'),
                     _buildDatePicker(),
-                    const SizedBox(height: 20),
-
-                    _buildLabel('Password'),
-                    _buildPasswordField(_passwordController, _obscurePassword, () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    }),
-                    const SizedBox(height: 20),
-
-                    _buildLabel('Konfirmasi Password'),
-                    _buildPasswordField(_confirmPasswordController, _obscureConfirmPassword, () {
-                      setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-                    }),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Register Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _registerUser,
+                  onPressed: _isLoading ? null : _saveProfile,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryNavy,
                     shape: RoundedRectangleBorder(
@@ -267,7 +219,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
                       : const Text(
-                          'Daftar',
+                          'Simpan Profil',
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 16,
@@ -277,36 +229,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 24),
-
-              // Login Link
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Sudah punya akun? ',
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    ),
-                    child: const Text(
-                      'Masuk',
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryNavy,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -329,7 +251,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {TextInputType? keyboardType}) {
+  Widget _buildTextField(TextEditingController controller, String hint, IconData icon) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgGrey,
@@ -337,7 +259,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       child: TextField(
         controller: controller,
-        keyboardType: keyboardType,
         style: const TextStyle(
           fontFamily: 'Poppins',
           fontSize: 14,
@@ -345,10 +266,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: AppColors.textLight,
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 14),
           prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
@@ -428,42 +346,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPasswordField(TextEditingController controller, bool isObscure, VoidCallback toggleObscure) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.bgGrey,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isObscure,
-        style: const TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 14,
-          color: AppColors.textPrimary,
-        ),
-        decoration: InputDecoration(
-          hintText: 'Masukkan password',
-          hintStyle: const TextStyle(
-            color: AppColors.textLight,
-            fontSize: 14,
-          ),
-          prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary, size: 20),
-          suffixIcon: IconButton(
-            icon: Icon(
-              isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
-            onPressed: toggleObscure,
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );

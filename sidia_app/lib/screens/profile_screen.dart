@@ -1,43 +1,100 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  Future<Map<String, dynamic>?> _fetchUserData() async {
+    if (currentUser == null) return null;
+    
+    try {
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('Pengguna')
+          .doc(currentUser!.uid)
+          .get();
+          
+      if (docSnapshot.exists) {
+        return docSnapshot.data();
+      }
+    } catch (e) {
+      debugPrint('Error fetching user data: $e');
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Top Section (Light blue background, Avatar, Name, ID)
-              _buildTopSection(),
-              
-              // Data Diri Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildDataDiriCard(),
+        child: FutureBuilder<Map<String, dynamic>?>(
+          future: _fetchUserData(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final userData = snapshot.data;
+            final namaLengkap = userData?['nama_lengkap'] ?? currentUser?.displayName ?? 'Pengguna';
+            final email = userData?['email'] ?? currentUser?.email ?? 'Tidak ada email';
+            final jenisKelamin = userData?['jenis_kelamin'] ?? 'Belum Diatur';
+            
+            // Format Tanggal Lahir
+            String tanggalLahir = 'Belum Diatur';
+            if (userData != null && userData['tanggal_lahir'] != null) {
+              try {
+                final date = DateTime.parse(userData['tanggal_lahir']);
+                tanggalLahir = DateFormat('dd MMMM yyyy', 'id_ID').format(date);
+              } catch (e) {
+                tanggalLahir = 'Format Tanggal Salah';
+              }
+            }
+
+            // Potong UID untuk Patient ID (8 karakter pertama)
+            final patientId = currentUser?.uid != null 
+                ? 'SID-${currentUser!.uid.substring(0, 8).toUpperCase()}' 
+                : 'SID-UNKNOWN';
+
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Top Section
+                  _buildTopSection(namaLengkap, patientId),
+                  
+                  // Data Diri Card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildDataDiriCard(namaLengkap, jenisKelamin, tanggalLahir, email),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Logout Button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildLogoutButton(context),
+                  ),
+                  const SizedBox(height: 32),
+                ],
               ),
-              const SizedBox(height: 24),
-              
-              // Logout Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildLogoutButton(context),
-              ),
-              const SizedBox(height: 32),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
   
-  Widget _buildTopSection() {
+  Widget _buildTopSection(String name, String patientId) {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -60,7 +117,7 @@ class ProfileScreen extends StatelessWidget {
               border: Border.all(color: Colors.white, width: 4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -76,9 +133,9 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           // Name
-          const Text(
-            'Budi Santoso',
-            style: TextStyle(
+          Text(
+            name,
+            style: const TextStyle(
               fontFamily: 'Poppins',
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -93,9 +150,9 @@ class ProfileScreen extends StatelessWidget {
               color: const Color(0xFFD1F4E6), // Light green background
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Text(
-              'Patient ID: SID-8492',
-              style: TextStyle(
+            child: Text(
+              'Patient ID: $patientId',
+              style: const TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -108,7 +165,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDataDiriCard() {
+  Widget _buildDataDiriCard(String name, String gender, String dob, String email) {
     return Container(
       margin: const EdgeInsets.only(top: 20),
       decoration: BoxDecoration(
@@ -117,7 +174,7 @@ class ProfileScreen extends StatelessWidget {
         border: Border.all(color: AppColors.borderLight),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -151,13 +208,13 @@ class ProfileScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _buildFormField('Nama Lengkap', 'Budi Santoso', null),
+                _buildFormField('Nama Lengkap', name, null),
                 const SizedBox(height: 16),
-                _buildFormField('Jenis Kelamin', 'Pria', null),
+                _buildFormField('Jenis Kelamin', gender, null),
                 const SizedBox(height: 16),
-                _buildFormField('Tanggal Lahir', '12 Mei 1985', Icons.calendar_today_outlined),
+                _buildFormField('Tanggal Lahir', dob, Icons.calendar_today_outlined),
                 const SizedBox(height: 16),
-                _buildFormField('Email', 'budi.santoso@email.com', Icons.mail_outline),
+                _buildFormField('Email', email, Icons.mail_outline),
               ],
             ),
           ),
@@ -191,13 +248,16 @@ class ProfileScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (icon != null) Icon(icon, color: AppColors.textLight, size: 20),
@@ -214,18 +274,38 @@ class ProfileScreen extends StatelessWidget {
       height: 52,
       child: ElevatedButton.icon(
         onPressed: () async {
-          try {
-            await FirebaseAuth.instance.signOut();
-          } catch (e) {
-            debugPrint('Sign out failed: \$e');
-          }
-          if (context.mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => const LoginScreen(),
-              ),
-              (route) => false,
-            );
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Konfirmasi Keluar', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+              content: const Text('Apakah Anda yakin ingin keluar dari akun ini?', style: TextStyle(fontFamily: 'Poppins')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Batal', style: TextStyle(fontFamily: 'Poppins', color: AppColors.textSecondary)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Keluar', style: TextStyle(fontFamily: 'Poppins', color: AppColors.primaryRed)),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm == true) {
+            try {
+              await FirebaseAuth.instance.signOut();
+            } catch (e) {
+              debugPrint('Sign out failed: $e');
+            }
+            if (context.mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => const LoginScreen(),
+                ),
+                (route) => false,
+              );
+            }
           }
         },
         icon: const Icon(Icons.logout, size: 20, color: Colors.white),

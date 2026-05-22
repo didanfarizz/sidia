@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class DiagnosisResultScreen extends StatefulWidget {
-  const DiagnosisResultScreen({super.key});
+  final Map<String, dynamic>? diagnosisData;
+
+  const DiagnosisResultScreen({super.key, this.diagnosisData});
 
   @override
   State<DiagnosisResultScreen> createState() => _DiagnosisResultScreenState();
@@ -105,7 +107,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.arrow_back_ios_new,
@@ -127,7 +129,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.share_outlined,
@@ -151,6 +153,12 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
   }
 
   Widget _buildDiagnosisCard() {
+    final status = widget.diagnosisData?['status_diagnosis'] ?? 'Perlu Perhatian';
+    final primaryAssesment = widget.diagnosisData?['primary_assessment'] ?? 'Type 2 Diabetes';
+    
+    bool isWarning = status.toLowerCase().contains('perhatian') || status.toLowerCase().contains('diabetes');
+    Color badgeColor = isWarning ? AppColors.accentOrange : AppColors.accentGreen;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -158,7 +166,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -170,7 +178,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.accentOrange.withValues(alpha: 0.1),
+              color: badgeColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -179,19 +187,19 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.accentOrange,
+                  decoration: BoxDecoration(
+                    color: badgeColor,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Perlu Perhatian',
+                Text(
+                  status,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.accentOrange,
+                    color: badgeColor,
                   ),
                 ),
               ],
@@ -204,13 +212,15 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+              gradient: LinearGradient(
+                colors: isWarning 
+                  ? [const Color(0xFFF59E0B), const Color(0xFFFBBF24)]
+                  : [AppColors.accentTeal, const Color(0xFF14B8A6)],
               ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.accentOrange.withValues(alpha: 0.3),
+                  color: badgeColor.withOpacity(0.3),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
                 ),
@@ -248,17 +258,18 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.accentOrange.withValues(alpha: 0.1),
+              color: badgeColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Text(
-              'Type 2 Diabetes',
+            child: Text(
+              primaryAssesment,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: AppColors.accentOrange,
+                color: badgeColor,
               ),
+              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -267,21 +278,34 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
   }
 
   Widget _buildMetricsRow() {
+    final severity = widget.diagnosisData?['severity'] ?? '90%';
+    final confidence = widget.diagnosisData?['confidence_score'] ?? 'High';
+    
+    // Determine color based on severity string if possible, else default
+    Color severityColor = AppColors.primaryRed;
+    if (severity.contains('%')) {
+      final val = int.tryParse(severity.replaceAll('%', ''));
+      if (val != null && val < 50) severityColor = AppColors.accentOrange;
+      if (val != null && val < 20) severityColor = AppColors.accentGreen;
+    } else if (severity.toLowerCase() == 'low' || severity.toLowerCase() == 'rendah') {
+      severityColor = AppColors.accentGreen;
+    }
+
     return Row(
       children: [
         Expanded(
           child: _buildMetricCard(
-            'Severity',
-            '90%',
-            AppColors.primaryRed,
+            'Tingkat Risiko',
+            severity,
+            severityColor,
             Icons.warning_amber_rounded,
           ),
         ),
         const SizedBox(width: 14),
         Expanded(
           child: _buildMetricCard(
-            'Confidence Score',
-            'High',
+            'Tingkat Keyakinan',
+            confidence,
             AppColors.accentTeal,
             Icons.verified_outlined,
           ),
@@ -299,7 +323,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -313,7 +337,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             value,
             style: TextStyle(
               fontFamily: 'Poppins',
-              fontSize: 28,
+              fontSize: 24,
               fontWeight: FontWeight.w800,
               color: color,
             ),
@@ -323,9 +347,10 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             label,
             style: const TextStyle(
               fontFamily: 'Poppins',
-              fontSize: 12,
+              fontSize: 11,
               color: AppColors.textSecondary,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -333,6 +358,17 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
   }
 
   Widget _buildRecommendationsCard() {
+    List<dynamic> rawRecs = widget.diagnosisData?['recommendations'] ?? [
+      'Konsultasikan segera dengan dokter spesialis endokrinologi',
+      'Terapkan pola makan rendah gula, perbanyak serat dan sayuran hijau',
+      'Lakukan olahraga ringan-sedang minimal 30 menit per hari',
+      'Monitor gula darah secara teratur, minimal 2x sehari',
+      'Jaga pola tidur 7-8 jam setiap malam',
+    ];
+    
+    // Predefined emojis based on index for simplicity, or we can just use dots
+    List<String> emojis = ['🏥', '🍽️', '🏃', '💊', '😴', '💡', '💧'];
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -340,7 +376,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -354,7 +390,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.accentBlue.withValues(alpha: 0.1),
+                  color: AppColors.accentBlue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.lightbulb_outline,
@@ -373,26 +409,10 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             ],
           ),
           const SizedBox(height: 16),
-          _buildRecommendationItem(
-            '🏥',
-            'Konsultasikan segera dengan dokter spesialis endokrinologi',
-          ),
-          _buildRecommendationItem(
-            '🍽️',
-            'Terapkan pola makan rendah gula, perbanyak serat dan sayuran hijau',
-          ),
-          _buildRecommendationItem(
-            '🏃',
-            'Lakukan olahraga ringan-sedang minimal 30 menit per hari',
-          ),
-          _buildRecommendationItem(
-            '💊',
-            'Monitor gula darah secara teratur, minimal 2x sehari',
-          ),
-          _buildRecommendationItem(
-            '😴',
-            'Jaga pola tidur 7-8 jam setiap malam',
-          ),
+          ...List.generate(rawRecs.length, (index) {
+            final emoji = index < emojis.length ? emojis[index] : '📌';
+            return _buildRecommendationItem(emoji, rawRecs[index].toString());
+          }),
         ],
       ),
     );
@@ -443,7 +463,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             errorBuilder: (context, error, stackTrace) {
               return Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
+                children: const [
                   Text('SI',
                       style: TextStyle(
                           fontFamily: 'Poppins',
@@ -472,7 +492,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.8),
+              color: Colors.white.withOpacity(0.8),
               height: 1.5,
             ),
             textAlign: TextAlign.center,
@@ -483,7 +503,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withOpacity(0.6),
               height: 1.5,
             ),
             textAlign: TextAlign.center,
@@ -506,7 +526,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
             },
             icon: const Icon(Icons.chat_outlined, size: 20),
             label: const Text(
-              'Lihat Detail',
+              'Tutup Halaman',
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 15,
@@ -532,7 +552,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
                 onPressed: () {},
                 icon: const Icon(Icons.download_outlined, size: 18),
                 label: const Text(
-                  'Download',
+                  'Unduh',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 14,
@@ -555,7 +575,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen>
                 onPressed: () {},
                 icon: const Icon(Icons.share_outlined, size: 18),
                 label: const Text(
-                  'Share',
+                  'Bagikan',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 14,

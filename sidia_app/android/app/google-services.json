@@ -12,7 +12,20 @@
           "package_name": "com.example.sidia_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "465291344573-69orh2c9a2nf1e1ravc30rkn9lt9fgk5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.sidia_app",
+            "certificate_hash": "ccfb4730a6eb2d06572006cd10d53906af3f828d"
+          }
+        },
+        {
+          "client_id": "465291344573-99ru0jgm0tto4s2d7aufk1pusvoatvpc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBFq_Mj7Zxb0d4oXqMfswttc-7E_0tU3cI"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "465291344573-99ru0jgm0tto4s2d7aufk1pusvoatvpc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "465291344573-ph80ob61hjleq1r6g20q2qa901lu1oc7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.sidiaApp"
+              }
+            }
+          ]
         }
       }
     }

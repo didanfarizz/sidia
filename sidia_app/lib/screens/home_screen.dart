@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import 'assessment_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,46 +13,105 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  Future<Map<String, dynamic>> _fetchHomeData() async {
+    if (currentUser == null) return {};
+    
+    String namaLengkap = currentUser?.displayName ?? 'Pengguna';
+    Map<String, dynamic>? lastDiagnosis;
+
+    try {
+      // Ambil nama pengguna
+      final userDoc = await FirebaseFirestore.instance.collection('Pengguna').doc(currentUser!.uid).get();
+      if (userDoc.exists) {
+        namaLengkap = userDoc.data()?['nama_lengkap'] ?? namaLengkap;
+      }
+
+      // Ambil diagnosis terakhir (Asumsi ada koleksi 'Diagnosis')
+      final diagnosisQuery = await FirebaseFirestore.instance
+          .collection('Diagnosis')
+          .where('id_user', isEqualTo: currentUser!.uid)
+          .get();
+          
+      if (diagnosisQuery.docs.isNotEmpty) {
+        final docs = diagnosisQuery.docs.toList();
+        docs.sort((a, b) {
+          final aTime = a.data()['createdAt'] as Timestamp?;
+          final bTime = b.data()['createdAt'] as Timestamp?;
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+        lastDiagnosis = docs.first.data();
+      }
+    } catch (e) {
+      debugPrint('Error fetching home data: $e');
+      // Firebase index error is expected if composite index is missing, we handle gracefully.
+    }
+
+    return {
+      'nama_lengkap': namaLengkap,
+      'last_diagnosis': lastDiagnosis,
+    };
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 11) return 'Selamat Pagi';
+    if (hour < 15) return 'Selamat Siang';
+    if (hour < 18) return 'Selamat Sore';
+    return 'Selamat Malam';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Bar
-              _buildTopBar(),
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _fetchHomeData(),
+          builder: (context, snapshot) {
+            final nama = snapshot.data?['nama_lengkap'] ?? '...';
+            final lastDiagnosis = snapshot.data?['last_diagnosis'];
+            final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
-              // Greeting
-              _buildGreeting(),
-              const SizedBox(height: 16),
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Bar
+                  _buildTopBar(),
 
-              // Assessment Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildAssessmentCard(),
+                  // Greeting
+                  _buildGreeting(nama, isLoading),
+                  const SizedBox(height: 16),
+
+                  // Assessment Card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildAssessmentCard(),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Health Status / Diagnosis Card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildHealthStatusCard(lastDiagnosis, isLoading),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Berita Edukasi Diabetes
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildInsightsCard(),
+                  ),
+                  const SizedBox(height: 24),
+                ],
               ),
-              const SizedBox(height: 16),
-
-              // Health Status Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildHealthStatusCard(),
-              ),
-              const SizedBox(height: 16),
-
-              // Recent Glucose Trend Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _buildGlucoseTrendCard(),
-              ),
-              const SizedBox(height: 16),
-
-              const SizedBox(height: 16),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -102,12 +165,12 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.bgGrey,
             ),
             child: const Icon(
-              Icons.settings_outlined,
+              Icons.notifications_none_outlined,
               color: AppColors.textSecondary,
               size: 20,
             ),
@@ -118,15 +181,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ─── Greeting ──────────────────────────────────────────
-  Widget _buildGreeting() {
+  Widget _buildGreeting(String name, bool isLoading) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Good Morning, Alex',
-            style: TextStyle(
+          Text(
+            '${_getGreeting()}, ${isLoading ? "..." : name}',
+            style: const TextStyle(
               fontFamily: 'Poppins',
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -134,8 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            'Here is your daily health overview.',
+          const Text(
+            'Berikut adalah ringkasan kesehatan Anda hari ini.',
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 13,
@@ -173,12 +236,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
+              children: const [
                 Icon(Icons.assignment_outlined,
                     size: 14, color: AppColors.accentBlue),
-                const SizedBox(width: 6),
-                const Text(
-                  'Ready for Assessment',
+                SizedBox(width: 6),
+                Text(
+                  'Siap untuk Diagnosis',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 12,
@@ -193,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Title
           const Text(
-            'Start Daily Diagnosis',
+            'Mulai Diagnosis Harian',
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 17,
@@ -204,8 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 6),
 
           // Description
-          Text(
-            'Begin your AI-guided medical data input. We\'ll analyze your current readings to provide immediate insights.',
+          const Text(
+            'Mulai sesi input data medis Anda yang dipandu oleh AI. Kami akan menganalisis data Anda untuk memberikan wawasan medis yang akurat.',
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 13,
@@ -219,7 +282,12 @@ class _HomeScreenState extends State<HomeScreen> {
           // Begin Session Button
           SizedBox(
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AssessmentScreen()),
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryNavy,
                 foregroundColor: Colors.white,
@@ -234,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
-                    'Begin Session',
+                    'Mulai Sesi',
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 14,
@@ -253,7 +321,34 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ─── Health Status Card ────────────────────────────────
-  Widget _buildHealthStatusCard() {
+  Widget _buildHealthStatusCard(Map<String, dynamic>? lastDiagnosis, bool isLoading) {
+    String status = 'Belum Ada Riwayat';
+    String desc = 'Silakan mulai diagnosis pertama Anda.';
+    Color color = AppColors.textSecondary;
+    IconData icon = Icons.history_rounded;
+    String dateStr = '';
+
+    if (lastDiagnosis != null) {
+      status = lastDiagnosis['status_diagnosis'] ?? 'Selesai';
+      desc = lastDiagnosis['deskripsi_singkat'] ?? 'Lihat hasil selengkapnya.';
+      color = AppColors.accentGreen;
+      icon = Icons.check_circle_outline;
+      
+      if (status.toLowerCase().contains('diabetes') || status.toLowerCase().contains('perhatian')) {
+        color = AppColors.accentOrange;
+        icon = Icons.warning_amber_rounded;
+      }
+      
+      if (lastDiagnosis['createdAt'] != null) {
+        try {
+          final dt = (lastDiagnosis['createdAt'] as Timestamp).toDate();
+          dateStr = 'Terakhir diperbarui: ${DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(dt)}';
+        } catch (e) {
+          dateStr = '';
+        }
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -261,7 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -271,12 +366,12 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Header
           Row(
-            children: [
+            children: const [
               Icon(Icons.monitor_heart_outlined,
                   size: 20, color: AppColors.textSecondary),
-              const SizedBox(width: 8),
-              const Text(
-                'Health Status',
+              SizedBox(width: 8),
+              Text(
+                'Ringkasan Diagnosis Terakhir',
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 15,
@@ -287,184 +382,71 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Last updated: 2 hours ago',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 11,
-                color: AppColors.textLight,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Status Circle
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0FDF4),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.accentGreen,
-                  ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 28),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Status: Stabil',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accentGreen,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'All vitals in normal range',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 12,
-                    color: AppColors.accentGreen.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Glucose Trend Card ────────────────────────────────
-  Widget _buildGlucoseTrendCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.bgWhite,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              Icon(Icons.show_chart_rounded,
-                  size: 20, color: AppColors.textSecondary),
-              const SizedBox(width: 8),
-              const Text(
-                'Recent Glucose Trend',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Bar Chart
-          SizedBox(
-            height: 160,
-            child: _buildBarChart(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBarChart() {
-    final data = [
-      {'day': 'Mon', 'value': 0.45},
-      {'day': 'Tue', 'value': 0.50},
-      {'day': 'Wed', 'value': 0.55},
-      {'day': 'Thu', 'value': 0.65},
-      {'day': 'Today', 'value': 0.78},
-    ];
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: data.asMap().entries.map((entry) {
-        final index = entry.key;
-        final item = entry.value;
-        final isToday = item['day'] == 'Today';
-        final value = item['value'] as double;
-        final barHeight = 110.0 * value;
-
-        return Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Value label (only on Today)
-              if (isToday)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryNavy,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    '105',
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(height: 24),
-
-              // Bar
-              Container(
-                width: 32,
-                height: barHeight,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: isToday
-                      ? AppColors.accentTeal
-                      : AppColors.accentTeal.withValues(alpha: 0.3 + (index * 0.1)),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Day label
-              Text(
-                item['day'] as String,
-                style: TextStyle(
+          if (dateStr.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                dateStr,
+                style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 11,
-                  fontWeight: isToday ? FontWeight.w600 : FontWeight.w400,
-                  color: isToday ? AppColors.textPrimary : AppColors.textLight,
+                  color: AppColors.textLight,
                 ),
               ),
-            ],
-          ),
-        );
-      }).toList(),
+            ),
+          const SizedBox(height: 16),
+
+          // Status Content
+          if (isLoading)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    status,
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    desc,
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: color.withOpacity(0.8),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -477,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -488,12 +470,12 @@ class _HomeScreenState extends State<HomeScreen> {
           // Header
           Row(
             children: [
-              Icon(Icons.menu_book_outlined,
+              const Icon(Icons.menu_book_outlined,
                   size: 20, color: AppColors.textSecondary),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Insights & Education',
+                  'Berita Seputar Diabetes',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 15,
@@ -505,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
               GestureDetector(
                 onTap: () {},
                 child: const Text(
-                  'View All',
+                  'Lihat Semua',
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 13,
@@ -520,8 +502,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Article 1
           _buildArticleItem(
-            'Managing Nutrition: A Balanced Diet Guide',
-            '3 min read',
+            'Mengelola Nutrisi: Panduan Diet Seimbang untuk Diabetisi',
+            '3 mnt baca',
             'assets/images/article_nutrition.jpg',
             const Color(0xFF8B5E3C),
           ),
@@ -533,8 +515,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Article 2
           _buildArticleItem(
-            'The Importance of Light Daily Exercise',
-            '5 min read',
+            'Pentingnya Olahraga Ringan Harian bagi Gula Darah',
+            '5 mnt baca',
             'assets/images/article_exercise.jpg',
             const Color(0xFF4A7C59),
           ),
@@ -564,12 +546,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: placeholderColor.withValues(alpha: 0.2),
+                  color: placeholderColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.image_outlined,
-                  color: placeholderColor.withValues(alpha: 0.5),
+                  color: placeholderColor.withOpacity(0.5),
                   size: 24,
                 ),
               );
@@ -598,7 +580,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 4),
               Text(
                 readTime,
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 12,
                   color: AppColors.textLight,
@@ -615,7 +597,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTextLogo() {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
+      children: const [
         Text(
           'SI',
           style: TextStyle(
