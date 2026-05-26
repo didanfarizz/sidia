@@ -1,5 +1,20 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'assessment_screen.dart';
+
+class ChatMessage {
+  final String text;
+  final bool isUser;
+  final bool isDiagnosisCard;
+  final Map<String, dynamic>? diagnosisData;
+
+  ChatMessage({
+    this.text = '',
+    required this.isUser,
+    this.isDiagnosisCard = false,
+    this.diagnosisData,
+  });
+}
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -12,12 +27,77 @@ class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   bool _hasStarted = false;
+  bool _isTyping = false;
+  final List<ChatMessage> _messages = [];
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _startDiagnosis() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AssessmentScreen()),
+    );
+    if (result != null && result is Map<String, dynamic>) {
+      _handleDiagnosisResult(result);
+    }
+  }
+
+  void _handleDiagnosisResult(Map<String, dynamic> data) {
+    setState(() {
+      _messages.add(ChatMessage(
+        text: 'Ini adalah hasil analisis berdasarkan data fisik dan gejala Anda:',
+        isUser: false,
+      ));
+      _messages.add(ChatMessage(
+        isUser: false,
+        isDiagnosisCard: true,
+        diagnosisData: data,
+      ));
+    });
+    _scrollToBottom();
+  }
+
+  void _sendMessage() {
+    if (_messageController.text.trim().isEmpty) return;
+    final text = _messageController.text;
+    
+    setState(() {
+      _messages.add(ChatMessage(text: text, isUser: true));
+      _isTyping = true;
+    });
+    
+    _messageController.clear();
+    _scrollToBottom();
+    
+    // Simulate AI response
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _isTyping = false;
+        _messages.add(ChatMessage(
+          text: 'Saya mengerti keluhan Anda. SIDIA dirancang untuk membantu memetakan risiko, tetapi tetap sarankan agar Anda berkonsultasi dengan dokter untuk penanganan medis yang tepat. Ada gejala lain yang dirasakan?',
+          isUser: false,
+        ));
+      });
+      _scrollToBottom();
+    });
   }
 
   @override
@@ -35,47 +115,74 @@ class _ChatScreenState extends State<ChatScreen> {
             else ...[
               // Messages
               Expanded(
-                child: ListView(
+                child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  children: [
-                    // Date separator
-                    _buildDateSeparator('Today, 9:41 AM'),
-                    const SizedBox(height: 16),
-
-                    // AI Message 1
-                    _buildAIMessage(
-                      _buildRichText1(),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // User Message 1
-                    _buildUserMessage(
-                      'I feel okay, maybe a little more tired than usual. I did have a larger pasta dinner last night around 8 PM. Could that be it?',
-                      '9:45 AM',
-                    ),
-                    const SizedBox(height: 12),
-
-                    // AI Message 2
-                    _buildAIMessage(
-                      _buildRichText2(),
-                    ),
-                    const SizedBox(height: 4),
-
-                    // Diagnostic Analysis Card (embedded in chat)
-                    _buildDiagnosticCard(),
-                    const SizedBox(height: 4),
-
-                    // Recommendation Box
-                    _buildRecommendationBox(),
-                    const SizedBox(height: 16),
-
-                    // Typing indicator
-                    _buildTypingIndicator(),
-                    const SizedBox(height: 8),
-                  ],
+                  itemCount: _messages.length + (_isTyping ? 2 : 1),
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return _buildDateSeparator('Hari ini, ${TimeOfDay.now().format(context)}');
+                    }
+                    
+                    final msgIndex = index - 1;
+                    if (msgIndex < _messages.length) {
+                      final msg = _messages[msgIndex];
+                      if (msg.isDiagnosisCard && msg.diagnosisData != null) {
+                        return _buildDiagnosticCardDynamic(msg.diagnosisData!);
+                      }
+                      
+                      if (msg.isUser) {
+                        return _buildUserMessage(msg.text, TimeOfDay.now().format(context));
+                      } else {
+                        return _buildAIMessage(
+                          Text(
+                            msg.text,
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 13,
+                              color: AppColors.textPrimary,
+                              height: 1.6,
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                    
+                    if (_isTyping) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                        child: _buildTypingIndicator(),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
                 ),
               ),
+
+              // Quick Actions
+              if (_hasStarted)
+                Container(
+                  color: AppColors.bgLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  alignment: Alignment.centerLeft,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _startDiagnosis,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Diagnosis Ulang', style: TextStyle(fontFamily: 'Poppins')),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primaryNavy,
+                            side: const BorderSide(color: AppColors.primaryNavy),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
               // Input Area
               _buildInputArea(),
@@ -114,7 +221,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const Spacer(),
-
           // SIDIA Logo
           Image.asset(
             'assets/images/logo_sidia.png',
@@ -126,20 +232,9 @@ class _ChatScreenState extends State<ChatScreen> {
             },
           ),
           const Spacer(),
-
-          // Settings Icon
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.bgGrey,
-            ),
-            child: const Icon(
-              Icons.settings_outlined,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -162,7 +257,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
+                      color: Colors.black.withOpacity(0.03),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -171,11 +266,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Robot Avatar
                     Container(
                       width: 90,
                       height: 90,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: AppColors.accentBlue,
                       ),
@@ -188,18 +282,16 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    // Heading
                     const Text(
                       'Halo!',
                       style: TextStyle(
-                        fontFamily: 'Georgia', // Using a serif-like font similar to design
+                        fontFamily: 'Georgia',
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Subtitle
                     const Text(
                       'Saya Asisten SIDIA Anda. Mari kita mulai proses penilaian risiko diabetes Anda untuk mendapatkan panduan medis yang tepat.',
                       textAlign: TextAlign.center,
@@ -215,7 +307,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          // Bottom Button Area
           Column(
             children: [
               SizedBox(
@@ -225,10 +316,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   onPressed: () {
                     setState(() {
                       _hasStarted = true;
+                      _messages.add(ChatMessage(
+                        text: 'Halo! Saya asisten SIDIA Anda. Mari kita mulai proses diagnosis atau silakan tanyakan pertanyaan seputar keluhan Anda.',
+                        isUser: false,
+                      ));
                     });
+                    _startDiagnosis();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E40AF), // Deeper blue matching design
+                    backgroundColor: const Color(0xFF1E40AF),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -272,20 +368,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ─── Date Separator ────────────────────────────────────
   Widget _buildDateSeparator(String text) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.bgGrey,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textLight,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.bgGrey,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textLight,
+            ),
           ),
         ),
       ),
@@ -294,229 +393,224 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ─── AI Message ────────────────────────────────────────
   Widget _buildAIMessage(Widget content) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // S Avatar
-        Container(
-          width: 28,
-          height: 28,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.primaryNavy,
-          ),
-          child: const Center(
-            child: Text(
-              'S',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primaryNavy,
+            ),
+            child: const Center(
+              child: Text(
+                'S',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // SIDIA label
-              const Text(
-                'SIDIA',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              // Bubble
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.bgWhite,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(4),
-                    topRight: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'SIDIA',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
-                child: content,
-              ),
-            ],
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgWhite,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: content,
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   // ─── User Message ──────────────────────────────────────
   Widget _buildUserMessage(String text, String time) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Flexible(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryNavy,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                    bottomRight: Radius.circular(4),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryNavy,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(4),
+                    ),
                   ),
-                ),
-                child: Text(
-                  text,
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 13,
-                    color: Colors.white,
-                    height: 1.5,
+                  child: Text(
+                    text,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                      color: Colors.white,
+                      height: 1.5,
+                    ),
                   ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            time,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              color: AppColors.textLight,
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          time,
-          style: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 11,
-            color: AppColors.textLight,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── Rich Text for AI Message 1 ────────────────────────
-  Widget _buildRichText1() {
-    return RichText(
-      text: const TextSpan(
-        style: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 13,
-          color: AppColors.textPrimary,
-          height: 1.6,
-        ),
-        children: [
-          TextSpan(
-            text:
-                'Hello. I\'ve reviewed your latest fasting blood glucose readings and the dietary log from yesterday. Your morning reading was ',
-          ),
-          TextSpan(
-            text: '112 mg/dL',
-            style: TextStyle(
-              color: AppColors.accentBlue,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          TextSpan(
-            text:
-                ', which is slightly elevated from your baseline. How are you feeling this morning? Have you experienced any unusual fatigue or thirst?',
           ),
         ],
       ),
     );
   }
 
-  // ─── Rich Text for AI Message 2 ────────────────────────
-  Widget _buildRichText2() {
-    return RichText(
-      text: const TextSpan(
-        style: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 13,
-          color: AppColors.textPrimary,
-          height: 1.6,
-        ),
-        children: [
-          TextSpan(
-            text:
-                'Based on your elevated fasting reading, reported fatigue, and previous health markers in your history, I have performed a diagnostic analysis. There is a ',
-          ),
-          TextSpan(
-            text: '90% probability of Type 2 Diabetes',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          TextSpan(text: ' or pre-diabetes.'),
-        ],
-      ),
-    );
-  }
+  // ─── Diagnostic Analysis Card Dynamic ──────────────────
+  Widget _buildDiagnosticCardDynamic(Map<String, dynamic> data) {
+    final status = data['status_diagnosis'] ?? 'Unknown';
+    final severity = data['severity'] ?? 'N/A';
+    final confidence = data['confidence_score'] ?? 'N/A';
+    final recommendations = List<String>.from(data['recommendations'] ?? []);
+    final primary = data['primary_assessment'] ?? status;
+    
+    Color valueColor = AppColors.primaryRed;
+    if (status.toLowerCase().contains('rendah')) valueColor = AppColors.accentGreen;
+    if (status.toLowerCase().contains('sedang')) valueColor = AppColors.accentOrange;
 
-  // ─── Diagnostic Analysis Card ──────────────────────────
-  Widget _buildDiagnosticCard() {
     return Padding(
-      padding: const EdgeInsets.only(left: 36),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.bgWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
+      padding: const EdgeInsets.only(left: 36, bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.bgWhite,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Diagnostic Analysis',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                Row(
+                  children: const [
+                    Text(
+                      'Diagnostic Analysis',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Icon(Icons.assessment_outlined, size: 18, color: AppColors.accentBlue),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                Icon(Icons.assessment_outlined,
-                    size: 18, color: AppColors.accentBlue),
+                const SizedBox(height: 16),
+                _buildDiagnosticRow('Primary\nCondition', primary, isBold: true),
+                const Divider(color: AppColors.borderLight, height: 24),
+                _buildDiagnosticRow('Risk Level', status, valueColor: valueColor),
+                const Divider(color: AppColors.borderLight, height: 24),
+                _buildDiagnosticRow('Severity / Score', severity, valueColor: valueColor),
+                const Divider(color: AppColors.borderLight, height: 24),
+                _buildDiagnosticRow('Confidence Score', confidence, valueColor: AppColors.accentBlue),
               ],
             ),
-            const SizedBox(height: 16),
-
-            // Data rows
-            _buildDiagnosticRow('Primary\nCondition', 'Type 2\nDiabetes',
-                isBold: true),
-            const Divider(color: AppColors.borderLight, height: 24),
-            _buildDiagnosticRow('Probability', '90%',
-                valueColor: AppColors.primaryRed),
-            const Divider(color: AppColors.borderLight, height: 24),
-            _buildDiagnosticRow('Confidence Score', 'High',
-                valueColor: AppColors.accentGreen),
+          ),
+          if (recommendations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8F0),
+                borderRadius: BorderRadius.circular(12),
+                border: const Border(
+                  left: BorderSide(
+                    color: AppColors.accentOrange,
+                    width: 3,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Recommendation:',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accentOrange,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    recommendations.first,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: AppColors.textPrimary,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildDiagnosticRow(String label, String value,
-      {bool isBold = false, Color? valueColor}) {
+  Widget _buildDiagnosticRow(String label, String value, {bool isBold = false, Color? valueColor}) {
     return Row(
       children: [
         Expanded(
@@ -543,57 +637,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ─── Recommendation Box ────────────────────────────────
-  Widget _buildRecommendationBox() {
-    return Padding(
-      padding: const EdgeInsets.only(left: 36),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF8F0),
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            left: BorderSide(
-              color: AppColors.accentOrange,
-              width: 3,
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recommendation:',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.accentOrange,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Given the 90% probability, we strongly advise scheduling an HbA1c test with your primary care physician to confirm the diagnosis and discuss management strategies immediately.',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 12,
-                color: AppColors.textPrimary,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ─── Typing Indicator ──────────────────────────────────
   Widget _buildTypingIndicator() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Placeholder for alignment
         const SizedBox(width: 36),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -602,7 +650,7 @@ class _ChatScreenState extends State<ChatScreen> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: Colors.black.withOpacity(0.04),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -631,7 +679,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: AppColors.bgWhite,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -639,33 +687,28 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Column(
         children: [
-          // Input Row
           Row(
             children: [
-              // + Button
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.bgGrey,
                 ),
-                child: const Icon(Icons.add,
-                    color: AppColors.textSecondary, size: 22),
+                child: const Icon(Icons.add, color: AppColors.textSecondary, size: 22),
               ),
               const SizedBox(width: 10),
-
-              // Text Field
               Expanded(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.bgGrey,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: TextField(
                     controller: _messageController,
+                    onSubmitted: (_) => _sendMessage(),
                     decoration: const InputDecoration(
                       hintText: 'Type a message or describe\nsymptoms...',
                       hintMaxLines: 2,
@@ -690,24 +733,23 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-
-              // Send Button
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.accentBlue,
+              InkWell(
+                onTap: _sendMessage,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accentBlue,
+                  ),
+                  child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                 ),
-                child: const Icon(Icons.send_rounded,
-                    color: Colors.white, size: 20),
               ),
             ],
           ),
           const SizedBox(height: 6),
-
-          // Disclaimer
-          Text(
+          const Text(
             'SIDIA can make mistakes. Always consult your primary care physician for final medical decisions.',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -721,11 +763,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ─── Text Logo Fallback ────────────────────────────────
   Widget _buildTextLogo() {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
+      children: const [
         Text(
           'SI',
           style: TextStyle(

@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
-import 'assessment_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -285,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AssessmentScreen()),
+                  MaterialPageRoute(builder: (context) => const ChatScreen()),
                 );
               },
               style: ElevatedButton.styleFrom(
