@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/ai_service.dart';
 import 'assessment_screen.dart';
 
 class ChatMessage {
@@ -17,7 +18,9 @@ class ChatMessage {
 }
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final Map<String, dynamic>? initialDiagnosis;
+
+  const ChatScreen({super.key, this.initialDiagnosis});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -29,6 +32,40 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _hasStarted = false;
   bool _isTyping = false;
   final List<ChatMessage> _messages = [];
+  AiService? _aiService;
+  String? _aiError;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAiService();
+    if (widget.initialDiagnosis != null) {
+      _hasStarted = true;
+      _messages.add(ChatMessage(
+        text: 'Halo kembali! Berikut adalah hasil diagnosis terakhir Anda yang tersimpan:',
+        isUser: false,
+      ));
+      _messages.add(ChatMessage(
+        isUser: false,
+        isDiagnosisCard: true,
+        diagnosisData: widget.initialDiagnosis,
+      ));
+    }
+  }
+
+  Future<void> _initAiService() async {
+    try {
+      _aiService = AiService();
+      if (widget.initialDiagnosis != null) {
+        _aiService?.addContextFromDiagnosis(widget.initialDiagnosis!);
+      }
+    } catch (e) {
+      setState(() {
+        _aiError = e.toString();
+      });
+      debugPrint("AI Service Error: $e");
+    }
+  }
 
   @override
   void dispose() {
@@ -60,6 +97,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleDiagnosisResult(Map<String, dynamic> data) {
+    // Berikan konteks ke AI
+    _aiService?.addContextFromDiagnosis(data);
+    
     setState(() {
       _messages.add(ChatMessage(
         text: 'Ini adalah hasil analisis berdasarkan data fisik dan gejala Anda:',
@@ -74,7 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
     final text = _messageController.text;
     
@@ -86,18 +126,36 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
     _scrollToBottom();
     
-    // Simulate AI response
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+    if (_aiError != null) {
       setState(() {
         _isTyping = false;
         _messages.add(ChatMessage(
-          text: 'Saya mengerti keluhan Anda. SIDIA dirancang untuk membantu memetakan risiko, tetapi tetap sarankan agar Anda berkonsultasi dengan dokter untuk penanganan medis yang tepat. Ada gejala lain yang dirasakan?',
+          text: 'Fitur AI belum dapat digunakan karena terjadi kesalahan: $_aiError',
           isUser: false,
         ));
       });
       _scrollToBottom();
+      return;
+    }
+
+    if (_aiService == null) {
+      setState(() {
+        _isTyping = false;
+        _messages.add(ChatMessage(text: 'Sistem AI masih memuat...', isUser: false));
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    // Call real LLM
+    final response = await _aiService!.sendMessage(text);
+    
+    if (!mounted) return;
+    setState(() {
+      _isTyping = false;
+      _messages.add(ChatMessage(text: response, isUser: false));
     });
+    _scrollToBottom();
   }
 
   @override
@@ -198,29 +256,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Profile Avatar
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primaryNavy,
-              border: Border.all(color: AppColors.border, width: 1.5),
-            ),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/images/avatar_user.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Icon(Icons.person, color: Colors.white, size: 22),
-                  );
-                },
-              ),
-            ),
-          ),
-          const Spacer(),
           // SIDIA Logo
           Image.asset(
             'assets/images/logo_sidia.png',
@@ -230,11 +267,6 @@ class _ChatScreenState extends State<ChatScreen> {
             errorBuilder: (context, error, stackTrace) {
               return _buildTextLogo();
             },
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -558,7 +590,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 const Divider(color: AppColors.borderLight, height: 24),
                 _buildDiagnosticRow('Risk Level', status, valueColor: valueColor),
                 const Divider(color: AppColors.borderLight, height: 24),
-                _buildDiagnosticRow('Severity / Score', severity, valueColor: valueColor),
+                _buildDiagnosticRow('Certainty Factor (%)', severity, valueColor: valueColor),
                 const Divider(color: AppColors.borderLight, height: 24),
                 _buildDiagnosticRow('Confidence Score', confidence, valueColor: AppColors.accentBlue),
               ],
