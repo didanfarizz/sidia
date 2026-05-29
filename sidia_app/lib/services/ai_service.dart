@@ -11,9 +11,9 @@ class AiService {
       throw Exception('API Key Gemini tidak ditemukan di .env');
     }
 
-    // Konfigurasi model Gemini terbaru (Gemini 3.5 Flash) sesuai ketersediaan di AI Studio 2026
+    // Menggunakan model Gemini 3.5 Flash (Sesuai ketersediaan di AI Studio 2026)
     _model = GenerativeModel(
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       apiKey: apiKey,
       systemInstruction: Content.system('''
 Anda adalah SIDIA (Sistem Diagnosis Diabetes AI Assistant), asisten medis virtual yang pakar dalam bidang penyakit Diabetes Melitus Tipe 2. 
@@ -61,13 +61,60 @@ Gunakan informasi ini sebagai konteks jika pengguna bertanya tentang hasil diagn
     }
   }
 
-  /// Mengirim pesan pengguna ke Gemini dan menerima respons
-  Future<String> sendMessage(String text) async {
+  /// Mengembalikan riwayat percakapan dari database lokal
+  void restoreHistory(List<dynamic> pastMessages) {
     try {
-      final response = await _chatSession.sendMessage(Content.text(text));
-      return response.text ?? 'Maaf, saya tidak dapat merespon saat ini.';
+      List<Content> restored = [];
+      for (var msg in pastMessages) {
+        if (msg['isDiagnosisCard'] == true || msg['text'] == null || msg['text'].toString().isEmpty) {
+          continue; // Lewati kartu diagnosis atau teks kosong
+        }
+        if (msg['isUser'] == true) {
+          restored.add(Content.text(msg['text']));
+        } else {
+          restored.add(Content.model([TextPart(msg['text'])]));
+        }
+      }
+      _chatSession = _model.startChat(history: restored);
     } catch (e) {
-      return 'Maaf, terjadi kesalahan saat menghubungi server SIDIA: $e';
+      print("Gagal mengembalikan riwayat AI: $e");
     }
+  }
+
+  /// Mengirim pesan pengguna ke Gemini dan menerima respons dengan auto-retry
+  Future<String> sendMessage(String text) async {
+    int maxRetries = 3;
+    int retryDelayMs = 1500; // Mulai dari 1.5 detik
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final response = await _chatSession.sendMessage(Content.text(text));
+        return response.text ?? 'Maaf, saya tidak dapat merespon saat ini.';
+      } catch (e) {
+        String errorString = e.toString();
+        
+        // Deteksi error 503 / High Demand dari server AI
+        if (errorString.contains('503') || errorString.contains('high demand') || errorString.contains('UNAVAILABLE')) {
+          if (attempt < maxRetries) {
+            // Tunggu beberapa saat sebelum retry (Exponential backoff)
+            await Future.delayed(Duration(milliseconds: retryDelayMs));
+            retryDelayMs *= 2; // Waktu tunggu dikali 2 untuk percobaan berikutnya
+            continue;
+          } else {
+             return 'Maaf, layanan AI sedang sangat sibuk saat ini. Mohon tunggu beberapa saat dan coba kirim pesan Anda lagi ya.';
+          }
+        }
+        
+        // Deteksi error jaringan lokal
+        if (errorString.contains('SocketException') || errorString.contains('ClientException') || errorString.contains('Failed host lookup')) {
+           return 'Koneksi internet bermasalah. Silakan periksa jaringan internet Anda dan coba lagi.';
+        }
+        
+        // Error umum lainnya yang tidak terduga
+        return 'Maaf, terjadi kendala teknis pada layanan kami. Silakan coba beberapa saat lagi.';
+      }
+    }
+    
+    return 'Maaf, layanan sedang tidak tersedia.';
   }
 }

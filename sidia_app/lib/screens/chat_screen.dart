@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import '../services/ai_service.dart';
 import 'assessment_screen.dart';
@@ -16,6 +19,24 @@ class ChatMessage {
     this.isDiagnosisCard = false,
     this.diagnosisData,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'text': text,
+      'isUser': isUser,
+      'isDiagnosisCard': isDiagnosisCard,
+      'diagnosisData': diagnosisData,
+    };
+  }
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      text: json['text'] ?? '',
+      isUser: json['isUser'] ?? false,
+      isDiagnosisCard: json['isDiagnosisCard'] ?? false,
+      diagnosisData: json['diagnosisData'] as Map<String, dynamic>?,
+    );
+  }
 }
 
 class ChatScreen extends StatefulWidget {
@@ -27,51 +48,177 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
+class UserChatSession {
+  List<ChatMessage> messages = [];
+  bool hasStarted = false;
+  AiService? aiService;
+  DateTime? lastInteraction;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'hasStarted': hasStarted,
+      'lastInteraction': lastInteraction != null ? Timestamp.fromDate(lastInteraction!) : null,
+      'messages': messages.map((m) => m.toJson()).toList(),
+    };
+  }
+}
+
+class ChatSessionManager {
+  static final ChatSessionManager _instance = ChatSessionManager._internal();
+  factory ChatSessionManager() => _instance;
+  ChatSessionManager._internal();
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<UserChatSession> getSession(String uid) async {
+    final docRef = _firestore.collection('ChatSessions').doc(uid);
+    final snapshot = await docRef.get();
+
+    final session = UserChatSession();
+    
+    if (snapshot.exists) {
+      final data = snapshot.data()!;
+      final lastInteractionTs = data['lastInteraction'] as Timestamp?;
+      if (lastInteractionTs != null) {
+        final lastInteraction = lastInteractionTs.toDate();
+        final now = DateTime.now();
+        if (now.difference(lastInteraction).inHours >= 24) {
+          // Kadaluarsa
+          await docRef.delete();
+          return session;
+        }
+        
+        session.hasStarted = data['hasStarted'] ?? false;
+        session.lastInteraction = lastInteraction;
+        if (data['messages'] != null) {
+          final List<dynamic> msgs = data['messages'];
+          session.messages = msgs.map((m) => ChatMessage.fromJson(m as Map<String, dynamic>)).toList();
+        }
+      }
+    }
+    return session;
+  }
+
+  Future<void> saveSession(String uid, UserChatSession session) async {
+    await _firestore.collection('ChatSessions').doc(uid).set(session.toJson());
+  }
+
+  Future<void> deleteSession(String uid) async {
+    await _firestore.collection('ChatSessions').doc(uid).delete();
+  }
+}
+
 class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
-  bool _hasStarted = false;
   bool _isTyping = false;
-  final List<ChatMessage> _messages = [];
-  AiService? _aiService;
   String? _aiError;
+
+  UserChatSession _session = UserChatSession();
+  bool _isLoadingSession = true;
+
+  String get _currentUserId => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+
+  Timer? _sessionTimer;
+  // Durasi sesi (24 jam)
+  static const Duration _sessionDuration = Duration(hours: 24);
 
   @override
   void initState() {
     super.initState();
-    _initAiService();
+    _loadSession();
+  }
+
+  Future<void> _loadSession() async {
+    final session = await ChatSessionManager().getSession(_currentUserId);
+    
+    if (!mounted) return;
+    setState(() {
+      _session = session;
+      _isLoadingSession = false;
+    });
+
+    await _initAiService();
+
     if (widget.initialDiagnosis != null) {
-      _hasStarted = true;
-      _messages.add(ChatMessage(
-        text: 'Halo kembali! Berikut adalah hasil diagnosis terakhir Anda yang tersimpan:',
-        isUser: false,
-      ));
-      _messages.add(ChatMessage(
-        isUser: false,
-        isDiagnosisCard: true,
-        diagnosisData: widget.initialDiagnosis,
-      ));
+      if (!_session.hasStarted) {
+        _session.hasStarted = true;
+        _session.messages.add(ChatMessage(
+          text: 'Halo kembali! Berikut adalah hasil diagnosis terakhir Anda yang tersimpan:',
+          isUser: false,
+        ));
+        _session.messages.add(ChatMessage(
+          isUser: false,
+          isDiagnosisCard: true,
+          diagnosisData: widget.initialDiagnosis,
+        ));
+        _session.lastInteraction = DateTime.now();
+        await _saveSession();
+      }
+      _startSessionTimer(); // Mulai timer sesi sejak masuk jika ada diagnosis awal
     }
+    _scrollToBottom();
+  }
+
+  Future<void> _saveSession() async {
+    await ChatSessionManager().saveSession(_currentUserId, _session);
   }
 
   Future<void> _initAiService() async {
     try {
-      _aiService = AiService();
-      if (widget.initialDiagnosis != null) {
-        _aiService?.addContextFromDiagnosis(widget.initialDiagnosis!);
+      if (_session.aiService == null) {
+        _session.aiService = AiService();
+        
+        // Restore context if history exists
+        if (_session.messages.isNotEmpty) {
+          final historyData = _session.messages.map((m) => m.toJson()).toList();
+          _session.aiService!.restoreHistory(historyData);
+        }
+
+        if (widget.initialDiagnosis != null) {
+          _session.aiService?.addContextFromDiagnosis(widget.initialDiagnosis!);
+        }
       }
     } catch (e) {
-      setState(() {
-        _aiError = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _aiError = e.toString();
+        });
+      }
       debugPrint("AI Service Error: $e");
     }
+  }
+
+  void _startSessionTimer() {
+    _sessionTimer?.cancel();
+    _sessionTimer = Timer(_sessionDuration, () {
+      if (mounted) {
+        _closeSession();
+      }
+    });
+  }
+
+  void _closeSession() async {
+    await ChatSessionManager().deleteSession(_currentUserId);
+    if (!mounted) return;
+    setState(() {
+      _session = UserChatSession();
+    });
+    _initAiService();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sesi obrolan telah berakhir karena lebih dari 24 jam. Sesi baru telah dimulai.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _sessionTimer?.cancel(); // Hentikan timer untuk menghindari kebocoran memori
     super.dispose();
   }
 
@@ -88,39 +235,53 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _startDiagnosis() async {
+    // Batalkan timer selama proses diagnosis agar tidak expired di latar belakang
+    _sessionTimer?.cancel();
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const AssessmentScreen()),
     );
     if (result != null && result is Map<String, dynamic>) {
       _handleDiagnosisResult(result);
+    } else {
+      // Jika batal, jalankan kembali timer dari awal
+      _startSessionTimer();
     }
   }
 
-  void _handleDiagnosisResult(Map<String, dynamic> data) {
+  void _handleDiagnosisResult(Map<String, dynamic> data) async {
     // Berikan konteks ke AI
-    _aiService?.addContextFromDiagnosis(data);
+    _session.aiService?.addContextFromDiagnosis(data);
     
     setState(() {
-      _messages.add(ChatMessage(
+      _session.hasStarted = true;
+      _session.messages.add(ChatMessage(
         text: 'Ini adalah hasil analisis berdasarkan data fisik dan gejala Anda:',
         isUser: false,
       ));
-      _messages.add(ChatMessage(
+      _session.messages.add(ChatMessage(
         isUser: false,
         isDiagnosisCard: true,
         diagnosisData: data,
       ));
+      _session.lastInteraction = DateTime.now();
     });
+    await _saveSession();
     _scrollToBottom();
+    _startSessionTimer(); // Jalankan timer sesi
   }
 
   Future<void> _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
     final text = _messageController.text;
     
+    // Setiap kali user mengirim pesan, kita reset/perbarui timer sesi
+    _startSessionTimer();
+    
     setState(() {
-      _messages.add(ChatMessage(text: text, isUser: true));
+      _session.messages.add(ChatMessage(text: text, isUser: true));
+      _session.lastInteraction = DateTime.now();
       _isTyping = true;
     });
     
@@ -130,7 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_aiError != null) {
       setState(() {
         _isTyping = false;
-        _messages.add(ChatMessage(
+        _session.messages.add(ChatMessage(
           text: 'Fitur AI belum dapat digunakan karena terjadi kesalahan: $_aiError',
           isUser: false,
         ));
@@ -139,23 +300,25 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    if (_aiService == null) {
+    if (_session.aiService == null) {
       setState(() {
         _isTyping = false;
-        _messages.add(ChatMessage(text: 'Sistem AI masih memuat...', isUser: false));
+        _session.messages.add(ChatMessage(text: 'Sistem AI masih memuat...', isUser: false));
       });
       _scrollToBottom();
       return;
     }
 
     // Call real LLM
-    final response = await _aiService!.sendMessage(text);
+    final response = await _session.aiService!.sendMessage(text);
     
     if (!mounted) return;
     setState(() {
       _isTyping = false;
-      _messages.add(ChatMessage(text: response, isUser: false));
+      _session.messages.add(ChatMessage(text: response, isUser: false));
+      _session.lastInteraction = DateTime.now();
     });
+    await _saveSession();
     _scrollToBottom();
   }
 
@@ -169,7 +332,26 @@ class _ChatScreenState extends State<ChatScreen> {
             // Top Bar
             _buildTopBar(),
 
-            if (!_hasStarted)
+            if (_session.hasStarted) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Sesi obrolan otomatis berakhir jika tidak ada aktivitas selama 24 jam.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.borderLight),
+            ],
+
+            if (_isLoadingSession)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (!_session.hasStarted)
               Expanded(child: _buildIntroScreen())
             else ...[
               // Messages
@@ -177,15 +359,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: _messages.length + (_isTyping ? 2 : 1),
+                  itemCount: _session.messages.length + (_isTyping ? 2 : 1),
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       return _buildDateSeparator('Hari ini, ${TimeOfDay.now().format(context)}');
                     }
                     
                     final msgIndex = index - 1;
-                    if (msgIndex < _messages.length) {
-                      final msg = _messages[msgIndex];
+                    if (msgIndex < _session.messages.length) {
+                      final msg = _session.messages[msgIndex];
                       if (msg.isDiagnosisCard && msg.diagnosisData != null) {
                         return _buildDiagnosticCardDynamic(msg.diagnosisData!);
                       }
@@ -235,7 +417,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
 
               // Quick Actions
-              if (_hasStarted)
+              if (_session.hasStarted)
                 Container(
                   color: AppColors.bgLight,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -364,11 +546,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     setState(() {
-                      _hasStarted = true;
-                      _messages.add(ChatMessage(
+                      _session.hasStarted = true;
+                      _session.messages.add(ChatMessage(
                         text: 'Halo! Saya asisten SIDIA Anda. Mari kita mulai proses diagnosis atau silakan tanyakan pertanyaan seputar keluhan Anda.',
                         isUser: false,
                       ));
+                      _session.lastInteraction = DateTime.now();
                     });
                     _startDiagnosis();
                   },

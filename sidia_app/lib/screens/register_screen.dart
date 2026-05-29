@@ -80,6 +80,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    // Validasi kekuatan password
+    final hasUppercase = password.contains(RegExp(r'[A-Z]'));
+    final hasLowercase = password.contains(RegExp(r'[a-z]'));
+    final hasDigits = password.contains(RegExp(r'[0-9]'));
+    final hasSpecialCharacters = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+
+    if (password.length < 8 || !hasUppercase || !hasLowercase || !hasDigits || !hasSpecialCharacters) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, angka, dan simbol unik.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -123,10 +139,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               duration: Duration(seconds: 5),
             ),
           );
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
+          Navigator.pop(context);
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -291,10 +304,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    ),
+                    onTap: () => Navigator.pop(context),
                     child: const Text(
                       'Masuk',
                       style: TextStyle(
