@@ -4,30 +4,49 @@ import 'home_screen.dart';
 import 'history_screen.dart';
 import 'chat_screen.dart';
 import 'profile_screen.dart';
+import 'assessment_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
 
   @override
-  State<MainNavigation> createState() => _MainNavigationState();
+  State<MainNavigation> createState() => MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  bool _isDiagnosisMode = false;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const HistoryScreen(),
-    const ChatScreen(),
-    const ProfileScreen(),
-  ];
+  bool get isDiagnosisMode => _isDiagnosisMode;
+  int get currentIndex => _currentIndex;
+
+  void setIndex(int index, {bool isDiagnosisMode = false}) {
+    setState(() {
+      _currentIndex = index;
+      _isDiagnosisMode = isDiagnosisMode;
+    });
+  }
+
+  void exitDiagnosisMode() {
+    setState(() {
+      _isDiagnosisMode = false;
+      _currentIndex = 0; // Kembali ke Beranda
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      const HomeScreen(),
+      const HistoryScreen(),
+      _isDiagnosisMode ? const AssessmentScreen() : const ChatScreen(),
+      const ProfileScreen(),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: screens,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -61,7 +80,12 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget _buildNavItem(int index, IconData icon) {
     final isActive = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => setState(() {
+        _currentIndex = index;
+        if (index != 2) {
+          _isDiagnosisMode = false; // Reset diagnosis mode jika pindah ke tab lain
+        }
+      }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),

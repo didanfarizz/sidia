@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
+import 'main_navigation.dart';
+import 'diagnosis_result_screen.dart';
 class AssessmentScreen extends StatefulWidget {
   const AssessmentScreen({super.key});
 
@@ -169,7 +171,18 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       // Berikan data statis waktu untuk UI Result
       diagnosisData['createdAt'] = Timestamp.now(); 
 
-      Navigator.pop(context, diagnosisData);
+      final mainNav = context.findAncestorStateOfType<MainNavigationState>();
+      if (mainNav != null && mainNav.isDiagnosisMode) {
+        mainNav.setIndex(0); // Kembali ke Beranda setelah diagnosis selesai
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DiagnosisResultScreen(diagnosisData: diagnosisData),
+          ),
+        );
+      } else {
+        Navigator.pop(context, diagnosisData);
+      }
 
     } catch (e) {
       setState(() => _isLoading = false);
@@ -189,7 +202,14 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            final mainNav = context.findAncestorStateOfType<MainNavigationState>();
+            if (mainNav != null && mainNav.isDiagnosisMode) {
+              mainNav.exitDiagnosisMode();
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
         ),
         title: const Text(
           'Medical Information',
@@ -731,7 +751,14 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
             Expanded(
               flex: 1,
               child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  final mainNav = context.findAncestorStateOfType<MainNavigationState>();
+                  if (mainNav != null && mainNav.isDiagnosisMode) {
+                    mainNav.exitDiagnosisMode();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   side: const BorderSide(color: AppColors.primaryNavy),
