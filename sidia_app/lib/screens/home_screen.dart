@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
-import 'assessment_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -91,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Assessment Card
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildAssessmentCard(),
+                    child: _buildAssessmentCard(lastDiagnosis),
                   ),
                   const SizedBox(height: 16),
 
@@ -122,33 +122,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Profile Avatar
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primaryNavy,
-              border: Border.all(
-                color: AppColors.border,
-                width: 1.5,
-              ),
-            ),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/images/avatar_user.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Icon(Icons.person, color: Colors.white, size: 22),
-                  );
-                },
-              ),
-            ),
-          ),
-          const Spacer(),
-
           // SIDIA Logo (center)
           Image.asset(
             'assets/images/logo_sidia.png',
@@ -158,22 +133,6 @@ class _HomeScreenState extends State<HomeScreen> {
             errorBuilder: (context, error, stackTrace) {
               return _buildTextLogo();
             },
-          ),
-          const Spacer(),
-
-          // Settings Icon
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.bgGrey,
-            ),
-            child: const Icon(
-              Icons.notifications_none_outlined,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
           ),
         ],
       ),
@@ -212,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ─── Assessment Card ───────────────────────────────────
-  Widget _buildAssessmentCard() {
+  Widget _buildAssessmentCard(Map<String, dynamic>? lastDiagnosis) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -285,7 +244,9 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AssessmentScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => ChatScreen(initialDiagnosis: lastDiagnosis),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(
