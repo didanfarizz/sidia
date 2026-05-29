@@ -799,7 +799,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'SIDIA can make mistakes. Always consult your primary care physician for final medical decisions.',
+            'SIDIA dapat membuat kesalahan. Selalu konsultasikan dengan dokter atau tenaga medis utama Anda untuk keputusan medis akhir.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Poppins',
